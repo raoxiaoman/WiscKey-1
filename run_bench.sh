@@ -1,13 +1,13 @@
 #!/bin/bash
 KB=1024
-#NUM=100000
-NUM=1
+NUM=1000000
+#NUM=10000
 #NUM=10000000
 LBENCH_BIN=./out-static/db_bench
 #BENCHMARKS="fillseq,fillrandom,overwrite,readrandom,readseq,seekrandom,compact,readrandom,readseq"
 #BENCHMARKS="fillseq,seekrandom,compact,seekrandom"
-#BENCHMARKS="fillseq,fillrandom,overwrite,readrandom,readseq,seekrandom,compact,readrandom,readseq,seekrandom"
-BENCHMARKS="fillseq,readrandom"
+BENCHMARKS="fillseq,fillrandom,overwrite,readrandom,readseq,seekrandom,compact,readrandom,readseq,seekrandom"
+#BENCHMARKS="fillseq,readrandom"
 USE_EXISTING_DB=0
 #VALUE_SIZE=4096
 DB=../wiskkey_db_test

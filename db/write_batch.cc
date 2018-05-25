@@ -19,7 +19,7 @@
 #include "db/memtable.h"
 #include "db/write_batch_internal.h"
 #include "util/coding.h"
-#include <iostream>
+//#include <iostream>
 
 namespace leveldb {
 
@@ -157,9 +157,9 @@ Status WriteBatch::Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb) 
                 std::string v;
                 v.append("1");
                 std::string code;
-                std::cout << "len:" << len << std::endl;
-                std::cout << "file_numb:" << file_numb << std::endl;
-                std::cout << "pos:" << pos << std::endl;
+                //std::cout << "len:" << len << std::endl;
+                //std::cout << "file_numb:" << file_numb << std::endl;
+                //std::cout << "pos:" << pos << std::endl;
 
                 PutVarint64(&code, len);
                 PutVarint32(&code, file_numb);

@@ -35,7 +35,7 @@
 #include "util/logging.h"
 #include "util/mutexlock.h"
 #include "db/garbage_collector.h"
-#include <iostream>
+//#include <iostream>
 
 namespace leveldb {
 
@@ -1290,7 +1290,7 @@ Status DBImpl::RealValue(Slice val_ptr, std::string* value)
         if(q == NULL){
             return Status::Corruption("parse size false in RealValue");
         }
-        std::cout << "size:" << size << std::endl;
+        //std::cout << "size:" << size << std::endl;
 
         val_ptr = Slice(q, limit - q);
         p = val_ptr.data();
@@ -1300,7 +1300,7 @@ Status DBImpl::RealValue(Slice val_ptr, std::string* value)
         if(q == NULL){
             return Status::Corruption("parse file_numb false in RealValue");
         }
-        std::cout <<"file_numb:" << file_numb << std::endl;
+        //std::cout <<"file_numb:" << file_numb << std::endl;
 
         val_ptr = Slice(q, limit - q);
         p = val_ptr.data();
@@ -1310,7 +1310,7 @@ Status DBImpl::RealValue(Slice val_ptr, std::string* value)
         if(q == NULL){
             return Status::Corruption("parse pos false in RealValue");
         }
-        std::cout <<"pos:" << pos << std::endl;
+        //std::cout <<"pos:" << pos << std::endl;
 
         val_ptr = Slice(q, limit - q);
         p = val_ptr.data();

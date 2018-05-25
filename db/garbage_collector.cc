@@ -62,14 +62,51 @@ void GarbageCollector::BeginGarbageCollect(VersionEdit* edit, bool* save_edit)
             if(!isDel && db_->GetPtr(read_options, key, &val).ok())
             {
                 Slice val_ptr(val);
-                uint32_t file_numb;
-                uint64_t item_pos, item_size;
-                GetVarint64(&val_ptr, &item_size);
-                GetVarint32(&val_ptr, &file_numb);
-                GetVarint64(&val_ptr, &item_pos);
-                if(item_pos + item_size == garbage_pos_ && file_numb == vlog_number_ )
-                {
-                    clean_valid_batch.Put(key, value);
+                if(val_ptr[0] == '1'){
+                    uint32_t file_numb;
+                    uint64_t item_pos, item_size;
+
+                    const char* p = val_ptr.data()+1;
+
+                    const char* limit = p + val_ptr.size();
+                    const char* q = GetVarint64Ptr(p, limit, &item_size);
+                    if(q == NULL){
+                        continue;
+                    }
+                    //std::cout << "item_size:" << item_size << std::endl;
+
+                    val_ptr = Slice(q, limit - q);
+                    p = val_ptr.data();
+                    limit = p + val_ptr.size();
+
+                    q = GetVarint32Ptr(p, limit, &file_numb);
+                    if(q == NULL){
+                        continue;
+                    }
+                    //std::cout <<"file_numb:" << file_numb << std::endl;
+
+                    val_ptr = Slice(q, limit - q);
+                    p = val_ptr.data();
+                    limit = p + val_ptr.size();
+
+                    q = GetVarint64Ptr(p,limit,&item_pos);
+                    if(q == NULL){
+                        continue;
+                    }
+                    //std::cout <<"item_pos:" << item_pos << std::endl;
+
+                    val_ptr = Slice(q, limit - q);
+                    p = val_ptr.data();
+                    limit = p + val_ptr.size();
+
+                    //GetVarint64(&val_ptr, &item_size);
+                    //GetVarint32(&val_ptr, &file_numb);
+                    //GetVarint64(&val_ptr, &item_pos);
+                    if(item_pos + item_size == garbage_pos_ && file_numb == vlog_number_ )
+                    {
+                        clean_valid_batch.Put(key, value);
+                    }
+
                 }
             }
         }

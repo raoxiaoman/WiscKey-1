@@ -14,12 +14,12 @@
 //    data: uint8[len]
 
 #include "leveldb/write_batch.h"
-
 #include "leveldb/db.h"
 #include "db/dbformat.h"
 #include "db/memtable.h"
 #include "db/write_batch_internal.h"
 #include "util/coding.h"
+#include <iostream>
 
 namespace leveldb {
 
@@ -136,30 +136,55 @@ Status WriteBatch::Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb) 
       case kTypeValue:
         if (GetLengthPrefixedSlice(&input, &key) &&
             GetLengthPrefixedSlice(&input, &value)) {
-          const char* now_pos = input.data();//如果是插入，解析出k和v
-          size_t len = now_pos - last_pos;//计算出这条记录的大小
-          last_pos = now_pos;
+            if(value.size() < 128){
+                const char* now_pos = input.data();//如果是插入，解析出k和v
+                size_t len = now_pos - last_pos;//计算出这条记录的大小
+                last_pos = now_pos;
+                
+                //std::cout << value.ToString() << std::endl;
+                std::string v;
+                v.append("0");
+                v.append(value.ToString());
+                //std::cout << v << std::endl;
+                //std::cout << v[0] << std::endl;
+                handler->Put(key, v);
+                pos = pos + len;//更新pos
+            }else{
+                const char* now_pos = input.data();//如果是插入，解析出k和v
+                size_t len = now_pos - last_pos;//计算出这条记录的大小
+                last_pos = now_pos;
 
-          std::string v;
-          PutVarint64(&v, len);
-          PutVarint32(&v, file_numb);
-          PutVarint64(&v, pos);
-          handler->Put(key, v);
-          pos = pos + len;//更新pos
+                std::string v;
+                v.append("1");
+                std::string code;
+                std::cout << "len:" << len << std::endl;
+                std::cout << "file_numb:" << file_numb << std::endl;
+                std::cout << "pos:" << pos << std::endl;
+
+                PutVarint64(&code, len);
+                PutVarint32(&code, file_numb);
+                PutVarint64(&code, pos);
+
+                v.append(code);
+                //std::cout << v << std::endl;
+                handler->Put(key, v);
+                pos = pos + len;//更新pos
+
+            }
         } else {
-          return Status::Corruption("bad WriteBatch Put");
+            return Status::Corruption("bad WriteBatch Put");
         }
         break;
       case kTypeDeletion:
         if (GetLengthPrefixedSlice(&input, &key)) {
-          const char* now_pos = input.data();
-          size_t len = now_pos - last_pos;
-          pos = pos + len;//对于删除操作，不需要v值，更新pos
-          last_pos = now_pos;
+            const char* now_pos = input.data();
+            size_t len = now_pos - last_pos;
+            pos = pos + len;//对于删除操作，不需要v值，更新pos
+            last_pos = now_pos;
 
-          handler->Delete(key);//delete的val是不是要写成文件号？
+            handler->Delete(key);//delete的val是不是要写成文件号？
         } else {
-          return Status::Corruption("bad WriteBatch Delete");
+            return Status::Corruption("bad WriteBatch Delete");
         }
         break;
       default:
@@ -167,81 +192,81 @@ Status WriteBatch::Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb) 
     }
   }
   if (found != WriteBatchInternal::Count(this)) {
-    return Status::Corruption("WriteBatch has wrong count");
+      return Status::Corruption("WriteBatch has wrong count");
   } else {
-    return Status::OK();
+      return Status::OK();
   }
 }
 
 int WriteBatchInternal::Count(const WriteBatch* b) {
-  return DecodeFixed32(b->rep_.data() + 8);
+    return DecodeFixed32(b->rep_.data() + 8);
 }
 
 void WriteBatchInternal::SetCount(WriteBatch* b, int n) {
-  EncodeFixed32(&b->rep_[8], n);
+    EncodeFixed32(&b->rep_[8], n);
 }
 
 SequenceNumber WriteBatchInternal::Sequence(const WriteBatch* b) {
-  return SequenceNumber(DecodeFixed64(b->rep_.data()));
+    return SequenceNumber(DecodeFixed64(b->rep_.data()));
 }
 
 void WriteBatchInternal::SetSequence(WriteBatch* b, SequenceNumber seq) {
-  EncodeFixed64(&b->rep_[0], seq);
+    EncodeFixed64(&b->rep_[0], seq);
 }
 
 void WriteBatch::Put(const Slice& key, const Slice& value) {
-  WriteBatchInternal::SetCount(this, WriteBatchInternal::Count(this) + 1);
-  rep_.push_back(static_cast<char>(kTypeValue));
-  PutLengthPrefixedSlice(&rep_, key);
-  PutLengthPrefixedSlice(&rep_, value);
+    WriteBatchInternal::SetCount(this, WriteBatchInternal::Count(this) + 1);
+    rep_.push_back(static_cast<char>(kTypeValue));
+    PutLengthPrefixedSlice(&rep_, key);
+    PutLengthPrefixedSlice(&rep_, value);
 }
 
 void WriteBatch::Delete(const Slice& key) {
-  WriteBatchInternal::SetCount(this, WriteBatchInternal::Count(this) + 1);
-  rep_.push_back(static_cast<char>(kTypeDeletion));
-  PutLengthPrefixedSlice(&rep_, key);
+    WriteBatchInternal::SetCount(this, WriteBatchInternal::Count(this) + 1);
+    rep_.push_back(static_cast<char>(kTypeDeletion));
+    PutLengthPrefixedSlice(&rep_, key);
 }
 
 namespace {
-class MemTableInserter : public WriteBatch::Handler {
- public:
-  SequenceNumber sequence_;
-  MemTable* mem_;
-  virtual void Put(const Slice& key, const Slice& value) {
-    mem_->Add(sequence_, kTypeValue, key, value);
-    sequence_++;
-  }
-  virtual void Delete(const Slice& key) {
-    mem_->Add(sequence_, kTypeDeletion, key, Slice());
-    sequence_++;
-  }
-};
+    class MemTableInserter : public WriteBatch::Handler {
+        public:
+            SequenceNumber sequence_;
+            MemTable* mem_;
+            virtual void Put(const Slice& key, const Slice& value) {
+                mem_->Add(sequence_, kTypeValue, key, value);
+                sequence_++;
+            }
+            virtual void Delete(const Slice& key) {
+                mem_->Add(sequence_, kTypeDeletion, key, Slice());
+                sequence_++;
+            }
+    };
 }  // namespace
 
 Status WriteBatchInternal::InsertInto(const WriteBatch* b,
-                                      MemTable* memtable) {
-  MemTableInserter inserter;
-  inserter.sequence_ = WriteBatchInternal::Sequence(b);
-  inserter.mem_ = memtable;
-  return b->Iterate(&inserter);
+        MemTable* memtable) {
+    MemTableInserter inserter;
+    inserter.sequence_ = WriteBatchInternal::Sequence(b);
+    inserter.mem_ = memtable;
+    return b->Iterate(&inserter);
 }
 Status WriteBatchInternal::InsertInto(const WriteBatch* b,
-                                      MemTable* memtable, uint64_t& pos, uint64_t file_numb) {
-  MemTableInserter inserter;
-  inserter.sequence_ = WriteBatchInternal::Sequence(b);
-  inserter.mem_ = memtable;
-  return b->Iterate(&inserter, pos, file_numb);
+        MemTable* memtable, uint64_t& pos, uint64_t file_numb) {
+    MemTableInserter inserter;
+    inserter.sequence_ = WriteBatchInternal::Sequence(b);
+    inserter.mem_ = memtable;
+    return b->Iterate(&inserter, pos, file_numb);
 }
 
 void WriteBatchInternal::SetContents(WriteBatch* b, const Slice& contents) {
-  assert(contents.size() >= kHeader);
-  b->rep_.assign(contents.data(), contents.size());
+    assert(contents.size() >= kHeader);
+    b->rep_.assign(contents.data(), contents.size());
 }
 
 void WriteBatchInternal::Append(WriteBatch* dst, const WriteBatch* src) {
-  SetCount(dst, Count(dst) + Count(src));
-  assert(src->rep_.size() >= kHeader);
-  dst->rep_.append(src->rep_.data() + kHeader, src->rep_.size() - kHeader);
+    SetCount(dst, Count(dst) + Count(src));
+    assert(src->rep_.size() >= kHeader);
+    dst->rep_.append(src->rep_.data() + kHeader, src->rep_.size() - kHeader);
 }
 
 Status WriteBatchInternal::ParseRecord(const WriteBatch* batch, uint64_t& pos, Slice& key, Slice& value, bool& isDel)

@@ -35,6 +35,7 @@
 #include "util/logging.h"
 #include "util/mutexlock.h"
 #include "db/garbage_collector.h"
+#include <iostream>
 
 namespace leveldb {
 
@@ -1278,12 +1279,50 @@ Status DBImpl::RealValue(Slice val_ptr, std::string* value)
     Status s;
     uint32_t file_numb;
     uint64_t pos, size;
-    if(!GetVarint64(&val_ptr, &size))
-        return Status::Corruption("parse size false in RealValue");
-    if(!GetVarint32(&val_ptr, &file_numb))
-        return Status::Corruption("parse file_numb false in RealValue");
-    if(!GetVarint64(&val_ptr, &pos))
-        return Status::Corruption("parse pos false in RealValue");
+    if(val_ptr[0] == '0'){
+        value->assign(val_ptr.data()+1,val_ptr.size()-1);
+        return s;
+        
+    }else if(val_ptr[0] == '1'){
+        const char* p = val_ptr.data()+1;
+        const char* limit = p + val_ptr.size();
+        const char* q = GetVarint64Ptr(p, limit, &size);
+        if(q == NULL){
+            return Status::Corruption("parse size false in RealValue");
+        }
+        std::cout << "size:" << size << std::endl;
+
+        val_ptr = Slice(q, limit - q);
+        p = val_ptr.data();
+        limit = p + val_ptr.size();
+
+        q = GetVarint32Ptr(p, limit, &file_numb);
+        if(q == NULL){
+            return Status::Corruption("parse file_numb false in RealValue");
+        }
+        std::cout <<"file_numb:" << file_numb << std::endl;
+
+        val_ptr = Slice(q, limit - q);
+        p = val_ptr.data();
+        limit = p + val_ptr.size();
+
+        q = GetVarint64Ptr(p,limit,&pos);
+        if(q == NULL){
+            return Status::Corruption("parse pos false in RealValue");
+        }
+        std::cout <<"pos:" << pos << std::endl;
+
+        val_ptr = Slice(q, limit - q);
+        p = val_ptr.data();
+        limit = p + val_ptr.size();
+        //if(!GetVarint64(&val_ptr, &size))
+            //return Status::Corruption("parse size false in RealValue");
+        //if(!GetVarint32(&val_ptr, &file_numb))
+            //return Status::Corruption("parse file_numb false in RealValue");
+        //if(!GetVarint64(&val_ptr, &pos))
+            //return Status::Corruption("parse pos false in RealValue");
+    }
+
     log::VReader*  vlog_reader = vlog_manager_.GetVlog(file_numb);
     assert(vlog_reader != NULL);
     if(size <= 409600)
@@ -1339,234 +1378,234 @@ Status DBImpl::RealValue(Slice val_ptr, std::string* value)
 }
 
 Iterator* DBImpl::NewIterator(const ReadOptions& options) {
-  SequenceNumber latest_snapshot;
-  uint32_t seed;
-  Iterator* iter = NewInternalIterator(options, &latest_snapshot, &seed);
-  return NewDBIterator(
-      this, user_comparator(), iter,
-      latest_snapshot,
-      seed);
+    SequenceNumber latest_snapshot;
+    uint32_t seed;
+    Iterator* iter = NewInternalIterator(options, &latest_snapshot, &seed);
+    return NewDBIterator(
+            this, user_comparator(), iter,
+            latest_snapshot,
+            seed);
 }
 
 void DBImpl::RecordReadSample(Slice key) {
-  MutexLock l(&mutex_);
-  if (versions_->current()->RecordReadSample(key)) {
-    MaybeScheduleCompaction();
-  }
+    MutexLock l(&mutex_);
+    if (versions_->current()->RecordReadSample(key)) {
+        MaybeScheduleCompaction();
+    }
 }
 
 // Convenience methods
 Status DBImpl::Put(const WriteOptions& o, const Slice& key, const Slice& val) {
-  return DB::Put(o, key, val);
+    return DB::Put(o, key, val);
 }
 
 Status DBImpl::Delete(const WriteOptions& options, const Slice& key) {
-  return DB::Delete(options, key);
+    return DB::Delete(options, key);
 }
 
 Status DBImpl::Write(const WriteOptions& options, WriteBatch* my_batch) {
-  Writer w(&mutex_);
-  w.batch = my_batch;
-  w.sync = options.sync;
-  w.done = false;
+    Writer w(&mutex_);
+    w.batch = my_batch;
+    w.sync = options.sync;
+    w.done = false;
 
-  MutexLock l(&mutex_);
-  writers_.push_back(&w);
-  while (!w.done && &w != writers_.front()) {
-    w.cv.Wait();
-  }
-  if (w.done) {
-    return w.status;
-  }
+    MutexLock l(&mutex_);
+    writers_.push_back(&w);
+    while (!w.done && &w != writers_.front()) {
+        w.cv.Wait();
+    }
+    if (w.done) {
+        return w.status;
+    }
 
-  // May temporarily unlock and wait.
-  Status status = MakeRoomForWrite(my_batch == NULL);
-  uint64_t last_sequence = versions_->LastSequence();
-  Writer* last_writer = &w;
-  if (status.ok() && my_batch != NULL) {  // NULL batch is for compactions
-    WriteBatch* updates = BuildBatchGroup(&last_writer);
-    WriteBatchInternal::SetSequence(updates, last_sequence + 1);
-    last_sequence += WriteBatchInternal::Count(updates);
+    // May temporarily unlock and wait.
+    Status status = MakeRoomForWrite(my_batch == NULL);
+    uint64_t last_sequence = versions_->LastSequence();
+    Writer* last_writer = &w;
+    if (status.ok() && my_batch != NULL) {  // NULL batch is for compactions
+        WriteBatch* updates = BuildBatchGroup(&last_writer);
+        WriteBatchInternal::SetSequence(updates, last_sequence + 1);
+        last_sequence += WriteBatchInternal::Count(updates);
 
-    // Add to log and apply to memtable.  We can release the lock
-    // during this phase since &w is currently responsible for logging
-    // and protects against concurrent loggers and concurrent writes
-    // into mem_.
-    {
-      mutex_.Unlock();
-    int head_size = 0;
-      status = vlog_->AddRecord(WriteBatchInternal::Contents(updates), head_size);
-      bool sync_error = false;
-      if (status.ok() && options.sync) {
-        status = vlogfile_->Sync();
-        if (!status.ok()) {
-          sync_error = true;
+        // Add to log and apply to memtable.  We can release the lock
+        // during this phase since &w is currently responsible for logging
+        // and protects against concurrent loggers and concurrent writes
+        // into mem_.
+        {
+            mutex_.Unlock();
+            int head_size = 0;
+            status = vlog_->AddRecord(WriteBatchInternal::Contents(updates), head_size);
+            bool sync_error = false;
+            if (status.ok() && options.sync) {
+                status = vlogfile_->Sync();
+                if (!status.ok()) {
+                    sync_error = true;
+                }
+            }
+            vlog_head_ += head_size;
+            if (status.ok()) {
+                status = WriteBatchInternal::InsertInto(updates, mem_, vlog_head_, logfile_number_);//vlog_head_代表每条kv对在vlog中的位置
+            }
+            mutex_.Lock();
+            if (sync_error) {
+                // The state of the log file is indeterminate: the log record we
+                // just added may or may not show up when the DB is re-opened.
+                // So we force the DB into a mode where all future writes fail.
+                RecordBackgroundError(status);
+            }
         }
-      }
-     vlog_head_ += head_size;
-      if (status.ok()) {
-        status = WriteBatchInternal::InsertInto(updates, mem_, vlog_head_, logfile_number_);//vlog_head_代表每条kv对在vlog中的位置
-      }
-      mutex_.Lock();
-      if (sync_error) {
-        // The state of the log file is indeterminate: the log record we
-        // just added may or may not show up when the DB is re-opened.
-        // So we force the DB into a mode where all future writes fail.
-        RecordBackgroundError(status);
-      }
+        if (updates == tmp_batch_) tmp_batch_->Clear();
+
+        versions_->SetLastSequence(last_sequence);
     }
-    if (updates == tmp_batch_) tmp_batch_->Clear();
 
-    versions_->SetLastSequence(last_sequence);
-  }
-
-  while (true) {
-    Writer* ready = writers_.front();
-    writers_.pop_front();
-    if (ready != &w) {
-      ready->status = status;
-      ready->done = true;
-      ready->cv.Signal();
+    while (true) {
+        Writer* ready = writers_.front();
+        writers_.pop_front();
+        if (ready != &w) {
+            ready->status = status;
+            ready->done = true;
+            ready->cv.Signal();
+        }
+        if (ready == last_writer) break;
     }
-    if (ready == last_writer) break;
-  }
 
-  // Notify new head of write queue
-  if (!writers_.empty()) {
-    writers_.front()->cv.Signal();
-  }
+    // Notify new head of write queue
+    if (!writers_.empty()) {
+        writers_.front()->cv.Signal();
+    }
 
-  return status;
+    return status;
 }
 
 // REQUIRES: Writer list must be non-empty
 // REQUIRES: First writer must have a non-NULL batch
 WriteBatch* DBImpl::BuildBatchGroup(Writer** last_writer) {
-  assert(!writers_.empty());
-  Writer* first = writers_.front();
-  WriteBatch* result = first->batch;
-  assert(result != NULL);
+    assert(!writers_.empty());
+    Writer* first = writers_.front();
+    WriteBatch* result = first->batch;
+    assert(result != NULL);
 
-  size_t size = WriteBatchInternal::ByteSize(first->batch);
+    size_t size = WriteBatchInternal::ByteSize(first->batch);
 
-  // Allow the group to grow up to a maximum size, but if the
-  // original write is small, limit the growth so we do not slow
-  // down the small write too much.
-  size_t max_size = 1 << 20;
-  if (size <= (128<<10)) {
-    max_size = size + (128<<10);
-  }
-
-  *last_writer = first;
-  std::deque<Writer*>::iterator iter = writers_.begin();
-  ++iter;  // Advance past "first"
-  for (; iter != writers_.end(); ++iter) {
-    Writer* w = *iter;
-    if (w->sync && !first->sync) {
-      // Do not include a sync write into a batch handled by a non-sync write.
-      break;
+    // Allow the group to grow up to a maximum size, but if the
+    // original write is small, limit the growth so we do not slow
+    // down the small write too much.
+    size_t max_size = 1 << 20;
+    if (size <= (128<<10)) {
+        max_size = size + (128<<10);
     }
 
-    if (w->batch != NULL) {
-      size += WriteBatchInternal::ByteSize(w->batch);
-      if (size > max_size) {
-        // Do not make batch too big
-        break;
-      }
+    *last_writer = first;
+    std::deque<Writer*>::iterator iter = writers_.begin();
+    ++iter;  // Advance past "first"
+    for (; iter != writers_.end(); ++iter) {
+        Writer* w = *iter;
+        if (w->sync && !first->sync) {
+            // Do not include a sync write into a batch handled by a non-sync write.
+            break;
+        }
 
-      // Append to *result
-      if (result == first->batch) {
-        // Switch to temporary batch instead of disturbing caller's batch
-        result = tmp_batch_;
-        assert(WriteBatchInternal::Count(result) == 0);
-        WriteBatchInternal::Append(result, first->batch);
-      }
-      WriteBatchInternal::Append(result, w->batch);
+        if (w->batch != NULL) {
+            size += WriteBatchInternal::ByteSize(w->batch);
+            if (size > max_size) {
+                // Do not make batch too big
+                break;
+            }
+
+            // Append to *result
+            if (result == first->batch) {
+                // Switch to temporary batch instead of disturbing caller's batch
+                result = tmp_batch_;
+                assert(WriteBatchInternal::Count(result) == 0);
+                WriteBatchInternal::Append(result, first->batch);
+            }
+            WriteBatchInternal::Append(result, w->batch);
+        }
+        *last_writer = w;
     }
-    *last_writer = w;
-  }
-  return result;
+    return result;
 }
 
 // REQUIRES: mutex_ is held
 // REQUIRES: this thread is currently at the front of the writer queue
 Status DBImpl::MakeRoomForWrite(bool force) {
-  mutex_.AssertHeld();
-  assert(!writers_.empty());
-  bool allow_delay = !force;
-  Status s;
-      if(vlog_head_ >= options_.max_vlog_size)
-      {
-    //新生成的vlog文件的编号会和imm生成的sst文件一起应用到version中，见CompactMemTable
-         uint32_t new_log_number = versions_->NewVlogNumber();//对于newdb且不能重用上次的log(即不能logandapply新生成的log)，会有bug
-         vlog_head_ = 0;
-         WritableFile* vlfile;
-         s = env_->NewWritableFile(VLogFileName(dbname_, new_log_number), &vlfile);
-         if (!s.ok()) {
+    mutex_.AssertHeld();
+    assert(!writers_.empty());
+    bool allow_delay = !force;
+    Status s;
+    if(vlog_head_ >= options_.max_vlog_size)
+    {
+        //新生成的vlog文件的编号会和imm生成的sst文件一起应用到version中，见CompactMemTable
+        uint32_t new_log_number = versions_->NewVlogNumber();//对于newdb且不能重用上次的log(即不能logandapply新生成的log)，会有bug
+        vlog_head_ = 0;
+        WritableFile* vlfile;
+        s = env_->NewWritableFile(VLogFileName(dbname_, new_log_number), &vlfile);
+        if (!s.ok()) {
             versions_->ReuseVlogNumber(new_log_number);
- //           break;
- return s;
-         }
-         delete vlog_;
-         delete vlogfile_;
-         vlogfile_ = vlfile;
-         logfile_number_ = new_log_number;
-         vlog_ = new log::VWriter(vlfile);
-          SequentialFile* vlr_file;
-          s = options_.env->NewSequentialFile(VLogFileName(dbname_, new_log_number), &vlr_file);
-          log::VReader* vlog_reader = new log::VReader(vlr_file, true,0);
-          vlog_manager_.AddVlog(new_log_number, vlog_reader);
-          Log(options_.info_log, "new vlog %d...\n", new_log_number);
-      }
-  while (true) {
-    if (!bg_error_.ok()) {
-      // Yield previous error
-      s = bg_error_;
-      break;
-    } else if (
-        allow_delay &&
-        versions_->NumLevelFiles(0) >= config::kL0_SlowdownWritesTrigger) {
-      // We are getting close to hitting a hard limit on the number of
-      // L0 files.  Rather than delaying a single write by several
-      // seconds when we hit the hard limit, start delaying each
-      // individual write by 1ms to reduce latency variance.  Also,
-      // this delay hands over some CPU to the compaction thread in
-      // case it is sharing the same core as the writer.
-      mutex_.Unlock();
-      env_->SleepForMicroseconds(1000);
-      allow_delay = false;  // Do not delay a single write more than once
-      mutex_.Lock();
-    } else if (!force &&
-               (mem_->ApproximateMemoryUsage() <= options_.write_buffer_size)) {
-      // There is room in current memtable
-      break;
-    } else if (imm_ != NULL) {
-      // We have filled up the current memtable, but the previous
-      // one is still being compacted, so we wait.
-      Log(options_.info_log, "Current memtable full; waiting...\n");
-      bg_cv_.Wait();
-    } else if (versions_->NumLevelFiles(0) >= config::kL0_StopWritesTrigger) {
-      // There are too many level-0 files.
-      Log(options_.info_log, "Too many L0 files; waiting...\n");
-      bg_cv_.Wait();
-    } else {
-      // Attempt to switch to a new memtable and trigger compaction of old
-     // assert(versions_->PrevLogNumber() == 0);
-
-      imm_ = mem_;
-      uint64_t last_sequence = versions_->LastSequence();
-      last_sequence++;
-      versions_->SetLastSequence(last_sequence);
-      check_point_ = vlog_head_;
-      check_log_ = logfile_number_;
-      has_imm_.Release_Store(imm_);
-      mem_ = new MemTable(internal_comparator_);
-      mem_->Ref();
-      force = false;   // Do not force another compaction if have room
-      MaybeScheduleCompaction();
+            //           break;
+            return s;
+        }
+        delete vlog_;
+        delete vlogfile_;
+        vlogfile_ = vlfile;
+        logfile_number_ = new_log_number;
+        vlog_ = new log::VWriter(vlfile);
+        SequentialFile* vlr_file;
+        s = options_.env->NewSequentialFile(VLogFileName(dbname_, new_log_number), &vlr_file);
+        log::VReader* vlog_reader = new log::VReader(vlr_file, true,0);
+        vlog_manager_.AddVlog(new_log_number, vlog_reader);
+        Log(options_.info_log, "new vlog %d...\n", new_log_number);
     }
-  }
-  return s;
+    while (true) {
+        if (!bg_error_.ok()) {
+            // Yield previous error
+            s = bg_error_;
+            break;
+        } else if (
+                allow_delay &&
+                versions_->NumLevelFiles(0) >= config::kL0_SlowdownWritesTrigger) {
+            // We are getting close to hitting a hard limit on the number of
+            // L0 files.  Rather than delaying a single write by several
+            // seconds when we hit the hard limit, start delaying each
+            // individual write by 1ms to reduce latency variance.  Also,
+            // this delay hands over some CPU to the compaction thread in
+            // case it is sharing the same core as the writer.
+            mutex_.Unlock();
+            env_->SleepForMicroseconds(1000);
+            allow_delay = false;  // Do not delay a single write more than once
+            mutex_.Lock();
+        } else if (!force &&
+                (mem_->ApproximateMemoryUsage() <= options_.write_buffer_size)) {
+            // There is room in current memtable
+            break;
+        } else if (imm_ != NULL) {
+            // We have filled up the current memtable, but the previous
+            // one is still being compacted, so we wait.
+            Log(options_.info_log, "Current memtable full; waiting...\n");
+            bg_cv_.Wait();
+        } else if (versions_->NumLevelFiles(0) >= config::kL0_StopWritesTrigger) {
+            // There are too many level-0 files.
+            Log(options_.info_log, "Too many L0 files; waiting...\n");
+            bg_cv_.Wait();
+        } else {
+            // Attempt to switch to a new memtable and trigger compaction of old
+            // assert(versions_->PrevLogNumber() == 0);
+
+            imm_ = mem_;
+            uint64_t last_sequence = versions_->LastSequence();
+            last_sequence++;
+            versions_->SetLastSequence(last_sequence);
+            check_point_ = vlog_head_;
+            check_log_ = logfile_number_;
+            has_imm_.Release_Store(imm_);
+            mem_ = new MemTable(internal_comparator_);
+            mem_->Ref();
+            force = false;   // Do not force another compaction if have room
+            MaybeScheduleCompaction();
+        }
+    }
+    return s;
 }
 
 void DBImpl::CleanVlog()
@@ -1601,7 +1640,7 @@ void DBImpl::MaybeScheduleClean(bool isManuaClean)
         bg_clean_scheduled_ = true;
         if(!isManuaClean)
         {
-    //    env_->Schedule(&DBImpl::BGClean, this);//不能是schedule，一个线程池.可能会死锁
+            //    env_->Schedule(&DBImpl::BGClean, this);//不能是schedule，一个线程池.可能会死锁
             env_->StartThread(&DBImpl::BGClean, this);
         }
         else
@@ -1681,7 +1720,7 @@ void DBImpl::BackgroundClean()
     bool save_edit = false;
     garbager.BeginGarbageCollect(&edit, &save_edit);
     if(!save_edit)
-       vlog_manager_.RemoveCleaningVlog(clean_vlog_number);
+        vlog_manager_.RemoveCleaningVlog(clean_vlog_number);
 
     mutex_.Lock();
     if(save_edit)
@@ -1712,197 +1751,197 @@ void DBImpl::BackgroundRecoverClean()
 }
 
 bool DBImpl::GetProperty(const Slice& property, std::string* value) {
-  value->clear();
+    value->clear();
 
-  MutexLock l(&mutex_);
-  Slice in = property;
-  Slice prefix("leveldb.");
-  if (!in.starts_with(prefix)) return false;
-  in.remove_prefix(prefix.size());
+    MutexLock l(&mutex_);
+    Slice in = property;
+    Slice prefix("leveldb.");
+    if (!in.starts_with(prefix)) return false;
+    in.remove_prefix(prefix.size());
 
-  if (in.starts_with("num-files-at-level")) {
-    in.remove_prefix(strlen("num-files-at-level"));
-    uint64_t level;
-    bool ok = ConsumeDecimalNumber(&in, &level) && in.empty();
-    if (!ok || level >= config::kNumLevels) {
-      return false;
-    } else {
-      char buf[100];
-      snprintf(buf, sizeof(buf), "%d",
-               versions_->NumLevelFiles(static_cast<int>(level)));
-      *value = buf;
-      return true;
-    }
-  } else if (in == "stats") {
-    char buf[200];
-    snprintf(buf, sizeof(buf),
-             "                               Compactions\n"
-             "Level  Files Size(MB) Time(sec) Read(MB) Write(MB)\n"
-             "--------------------------------------------------\n"
-             );
-    value->append(buf);
-    for (int level = 0; level < config::kNumLevels; level++) {
-      int files = versions_->NumLevelFiles(level);
-      if (stats_[level].micros > 0 || files > 0) {
-        snprintf(
-            buf, sizeof(buf),
-            "%3d %8d %8.0f %9.0f %8.0f %9.0f\n",
-            level,
-            files,
-            versions_->NumLevelBytes(level) / 1048576.0,
-            stats_[level].micros / 1e6,
-            stats_[level].bytes_read / 1048576.0,
-            stats_[level].bytes_written / 1048576.0);
+    if (in.starts_with("num-files-at-level")) {
+        in.remove_prefix(strlen("num-files-at-level"));
+        uint64_t level;
+        bool ok = ConsumeDecimalNumber(&in, &level) && in.empty();
+        if (!ok || level >= config::kNumLevels) {
+            return false;
+        } else {
+            char buf[100];
+            snprintf(buf, sizeof(buf), "%d",
+                    versions_->NumLevelFiles(static_cast<int>(level)));
+            *value = buf;
+            return true;
+        }
+    } else if (in == "stats") {
+        char buf[200];
+        snprintf(buf, sizeof(buf),
+                "                               Compactions\n"
+                "Level  Files Size(MB) Time(sec) Read(MB) Write(MB)\n"
+                "--------------------------------------------------\n"
+                );
         value->append(buf);
-      }
+        for (int level = 0; level < config::kNumLevels; level++) {
+            int files = versions_->NumLevelFiles(level);
+            if (stats_[level].micros > 0 || files > 0) {
+                snprintf(
+                        buf, sizeof(buf),
+                        "%3d %8d %8.0f %9.0f %8.0f %9.0f\n",
+                        level,
+                        files,
+                        versions_->NumLevelBytes(level) / 1048576.0,
+                        stats_[level].micros / 1e6,
+                        stats_[level].bytes_read / 1048576.0,
+                        stats_[level].bytes_written / 1048576.0);
+                value->append(buf);
+            }
+        }
+        return true;
+    } else if (in == "sstables") {
+        *value = versions_->current()->DebugString();
+        return true;
+    } else if (in == "approximate-memory-usage") {
+        size_t total_usage = options_.block_cache->TotalCharge();
+        if (mem_) {
+            total_usage += mem_->ApproximateMemoryUsage();
+        }
+        if (imm_) {
+            total_usage += imm_->ApproximateMemoryUsage();
+        }
+        char buf[50];
+        snprintf(buf, sizeof(buf), "%llu",
+                static_cast<unsigned long long>(total_usage));
+        value->append(buf);
+        return true;
     }
-    return true;
-  } else if (in == "sstables") {
-    *value = versions_->current()->DebugString();
-    return true;
-  } else if (in == "approximate-memory-usage") {
-    size_t total_usage = options_.block_cache->TotalCharge();
-    if (mem_) {
-      total_usage += mem_->ApproximateMemoryUsage();
-    }
-    if (imm_) {
-      total_usage += imm_->ApproximateMemoryUsage();
-    }
-    char buf[50];
-    snprintf(buf, sizeof(buf), "%llu",
-             static_cast<unsigned long long>(total_usage));
-    value->append(buf);
-    return true;
-  }
 
-  return false;
+    return false;
 }
 //ApproximateSizes是不包含v大小的
 void DBImpl::GetApproximateSizes(
-    const Range* range, int n,
-    uint64_t* sizes) {
-  // TODO(opt): better implementation
-  Version* v;
-  {
-    MutexLock l(&mutex_);
-    versions_->current()->Ref();
-    v = versions_->current();
-  }
+        const Range* range, int n,
+        uint64_t* sizes) {
+    // TODO(opt): better implementation
+    Version* v;
+    {
+        MutexLock l(&mutex_);
+        versions_->current()->Ref();
+        v = versions_->current();
+    }
 
-  for (int i = 0; i < n; i++) {
-    // Convert user_key into a corresponding internal key.
-    InternalKey k1(range[i].start, kMaxSequenceNumber, kValueTypeForSeek);
-    InternalKey k2(range[i].limit, kMaxSequenceNumber, kValueTypeForSeek);
-    uint64_t start = versions_->ApproximateOffsetOf(v, k1);
-    uint64_t limit = versions_->ApproximateOffsetOf(v, k2);
-    sizes[i] = (limit >= start ? limit - start : 0);
-  }
+    for (int i = 0; i < n; i++) {
+        // Convert user_key into a corresponding internal key.
+        InternalKey k1(range[i].start, kMaxSequenceNumber, kValueTypeForSeek);
+        InternalKey k2(range[i].limit, kMaxSequenceNumber, kValueTypeForSeek);
+        uint64_t start = versions_->ApproximateOffsetOf(v, k1);
+        uint64_t limit = versions_->ApproximateOffsetOf(v, k2);
+        sizes[i] = (limit >= start ? limit - start : 0);
+    }
 
-  {
-    MutexLock l(&mutex_);
-    v->Unref();
-  }
+    {
+        MutexLock l(&mutex_);
+        v->Unref();
+    }
 }
 
 // Default implementations of convenience methods that subclasses of DB
 // can call if they wish
 Status DB::Put(const WriteOptions& opt, const Slice& key, const Slice& value) {
-  WriteBatch batch;
-  batch.Put(key, value);
-  return Write(opt, &batch);
+    WriteBatch batch;
+    batch.Put(key, value);
+    return Write(opt, &batch);
 }
 
 Status DB::Delete(const WriteOptions& opt, const Slice& key) {
-  WriteBatch batch;
-  batch.Delete(key);
-  return Write(opt, &batch);
+    WriteBatch batch;
+    batch.Delete(key);
+    return Write(opt, &batch);
 }
 
 DB::~DB() { }
 
 Status DB::Open(const Options& options, const std::string& dbname,
-                DB** dbptr) {
-  *dbptr = NULL;
+        DB** dbptr) {
+    *dbptr = NULL;
 
-  DBImpl* impl = new DBImpl(options, dbname);
-  impl->mutex_.Lock();
-  VersionEdit edit;
-  // Recover handles create_if_missing, error_if_exists
-  bool save_manifest = false;
-  Status  s = impl->Recover(&edit, &save_manifest);
-  if (s.ok() && impl->mem_ == NULL) {
-    // Create new log and a corresponding memtable.
-    uint64_t new_log_number = impl->versions_->NewVlogNumber();
-    WritableFile* lfile;
-    s = options.env->NewWritableFile(VLogFileName(dbname, new_log_number),
-                                     &lfile);
-    if (s.ok()) {
-      edit.SetLogNumber(new_log_number);
-      impl->vlogfile_ = lfile;
-      impl->logfile_number_ = new_log_number;
-      impl->vlog_ = new log::VWriter(lfile);
-      impl->mem_ = new MemTable(impl->internal_comparator_);
-      impl->mem_->Ref();
-      SequentialFile* vlr_file;
-      s = impl->options_.env->NewSequentialFile(VLogFileName(impl->dbname_, new_log_number), &vlr_file);
-      log::VReader* vlog_reader = new log::VReader(vlr_file, true,0);
-      impl->vlog_manager_.AddVlog(new_log_number, vlog_reader);
-      Log(impl->options_.info_log,"newdb\n");
+    DBImpl* impl = new DBImpl(options, dbname);
+    impl->mutex_.Lock();
+    VersionEdit edit;
+    // Recover handles create_if_missing, error_if_exists
+    bool save_manifest = false;
+    Status  s = impl->Recover(&edit, &save_manifest);
+    if (s.ok() && impl->mem_ == NULL) {
+        // Create new log and a corresponding memtable.
+        uint64_t new_log_number = impl->versions_->NewVlogNumber();
+        WritableFile* lfile;
+        s = options.env->NewWritableFile(VLogFileName(dbname, new_log_number),
+                &lfile);
+        if (s.ok()) {
+            edit.SetLogNumber(new_log_number);
+            impl->vlogfile_ = lfile;
+            impl->logfile_number_ = new_log_number;
+            impl->vlog_ = new log::VWriter(lfile);
+            impl->mem_ = new MemTable(impl->internal_comparator_);
+            impl->mem_->Ref();
+            SequentialFile* vlr_file;
+            s = impl->options_.env->NewSequentialFile(VLogFileName(impl->dbname_, new_log_number), &vlr_file);
+            log::VReader* vlog_reader = new log::VReader(vlr_file, true,0);
+            impl->vlog_manager_.AddVlog(new_log_number, vlog_reader);
+            Log(impl->options_.info_log,"newdb\n");
+        }
     }
-  }
-  if (s.ok() && save_manifest) {
-    edit.SetLogNumber(impl->logfile_number_);
-    s = impl->versions_->LogAndApply(&edit, &impl->mutex_);
-  }
-  if (s.ok() && impl->recover_clean_vlog_number_ > 0 &&
-          impl->vlog_manager_.NeedRecover(impl->recover_clean_vlog_number_)) {
-    impl->bg_clean_scheduled_ = true;
-    impl->env_->StartThread(&DBImpl::BGCleanRecover, impl);
-    impl->DeleteObsoleteFiles();
-    impl->MaybeScheduleCompaction();
-  }
-  impl->mutex_.Unlock();
-  if (s.ok()) {
-    assert(impl->mem_ != NULL);
-    *dbptr = impl;
-  } else {
-    delete impl;
-  }
-  return s;
+    if (s.ok() && save_manifest) {
+        edit.SetLogNumber(impl->logfile_number_);
+        s = impl->versions_->LogAndApply(&edit, &impl->mutex_);
+    }
+    if (s.ok() && impl->recover_clean_vlog_number_ > 0 &&
+            impl->vlog_manager_.NeedRecover(impl->recover_clean_vlog_number_)) {
+        impl->bg_clean_scheduled_ = true;
+        impl->env_->StartThread(&DBImpl::BGCleanRecover, impl);
+        impl->DeleteObsoleteFiles();
+        impl->MaybeScheduleCompaction();
+    }
+    impl->mutex_.Unlock();
+    if (s.ok()) {
+        assert(impl->mem_ != NULL);
+        *dbptr = impl;
+    } else {
+        delete impl;
+    }
+    return s;
 }
 
 Snapshot::~Snapshot() {
 }
 
 Status DestroyDB(const std::string& dbname, const Options& options) {
-  Env* env = options.env;
-  std::vector<std::string> filenames;
-  // Ignore error in case directory does not exist
-  env->GetChildren(dbname, &filenames);
-  if (filenames.empty()) {
-    return Status::OK();
-  }
-
-  FileLock* lock;
-  const std::string lockname = LockFileName(dbname);
-  Status result = env->LockFile(lockname, &lock);
-  if (result.ok()) {
-    uint64_t number;
-    FileType type;
-    for (size_t i = 0; i < filenames.size(); i++) {
-      if (ParseFileName(filenames[i], &number, &type) &&
-          type != kDBLockFile) {  // Lock file will be deleted at end
-        Status del = env->DeleteFile(dbname + "/" + filenames[i]);
-        if (result.ok() && !del.ok()) {
-          result = del;
-        }
-      }
+    Env* env = options.env;
+    std::vector<std::string> filenames;
+    // Ignore error in case directory does not exist
+    env->GetChildren(dbname, &filenames);
+    if (filenames.empty()) {
+        return Status::OK();
     }
-    env->UnlockFile(lock);  // Ignore error since state is already gone
-    env->DeleteFile(lockname);
-    env->DeleteDir(dbname);  // Ignore error in case dir contains other files
-  }
-  return result;
+
+    FileLock* lock;
+    const std::string lockname = LockFileName(dbname);
+    Status result = env->LockFile(lockname, &lock);
+    if (result.ok()) {
+        uint64_t number;
+        FileType type;
+        for (size_t i = 0; i < filenames.size(); i++) {
+            if (ParseFileName(filenames[i], &number, &type) &&
+                    type != kDBLockFile) {  // Lock file will be deleted at end
+                Status del = env->DeleteFile(dbname + "/" + filenames[i]);
+                if (result.ok() && !del.ok()) {
+                    result = del;
+                }
+            }
+        }
+        env->UnlockFile(lock);  // Ignore error since state is already gone
+        env->DeleteFile(lockname);
+        env->DeleteDir(dbname);  // Ignore error in case dir contains other files
+    }
+    return result;
 }
 
 }  // namespace leveldb

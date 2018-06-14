@@ -1,0 +1,18 @@
+./out-static/db_bench  --benchmarks=fillseq,fillrandom,overwrite,readrandom,readseq,seekrandom,compact,readrandom,readseq,seekrandom --use_existing_db=0 --num=1000000 --value_size=4096 --db=../wiskkey_db_test
+Keys:       16 bytes each
+Values:     4096 bytes each (2048 bytes after compression)
+Entries:    1000000
+RawSize:    3921.5 MB (estimated)
+FileSize:   1968.4 MB (estimated)
+WARNING: Snappy compression is not enabled
+------------------------------------------------
+fillseq      :      11.646 micros/op;  336.7 MB/s
+fillrandom   :      12.488 micros/op;  314.0 MB/s
+overwrite    :      21.003 micros/op;  186.7 MB/s
+readrandom   :      10.339 micros/op; (1000000 of 1000000 found)
+readseq      :       3.106 micros/op; 1262.7 MB/s
+seekrandom   :       9.357 micros/op; (1000000 of 1000000 found)
+compact      : 8150414.000 micros/op;
+readrandom   :       6.499 micros/op; (1000000 of 1000000 found)
+readseq      :       3.005 micros/op; 1305.2 MB/s
+seekrandom   :       5.501 micros/op; (1000000 of 1000000 found)

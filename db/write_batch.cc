@@ -19,6 +19,7 @@
 #include "db/memtable.h"
 #include "db/write_batch_internal.h"
 #include "util/coding.h"
+#include "sstream"
 //#include <iostream>
 
 namespace leveldb {
@@ -128,6 +129,7 @@ Status WriteBatch::Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb) 
   last_pos += kHeader;//last_pos就是记录上一条记录插入vlog后vlog文件的大小
   Slice key, value;
   int found = 0;
+  std::stringstream ss;
   while (!input.empty()) {//遍历WriteBatch的每一条kv对
     found++;
     char tag = input[0];
@@ -140,22 +142,15 @@ Status WriteBatch::Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb) 
                 const char* now_pos = input.data();//如果是插入，解析出k和v
                 size_t len = now_pos - last_pos;//计算出这条记录的大小
                 last_pos = now_pos;
-                
-                //std::cout << value.ToString() << std::endl;
-                std::string v;
-                v.append("0");
-                v.append(value.ToString());
-                //std::cout << v << std::endl;
-                //std::cout << v[0] << std::endl;
-                handler->Put(key, v);
+                ss << "0" << value.ToString();
+                handler->Put(key, ss.str());
                 pos = pos + len;//更新pos
+                ss.str();
             }else{
                 const char* now_pos = input.data();//如果是插入，解析出k和v
                 size_t len = now_pos - last_pos;//计算出这条记录的大小
                 last_pos = now_pos;
 
-                std::string v;
-                v.append("1");
                 std::string code;
                 //std::cout << "len:" << len << std::endl;
                 //std::cout << "file_numb:" << file_numb << std::endl;
@@ -164,12 +159,10 @@ Status WriteBatch::Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb) 
                 PutVarint64(&code, len);
                 PutVarint32(&code, file_numb);
                 PutVarint64(&code, pos);
-
-                v.append(code);
-                //std::cout << v << std::endl;
-                handler->Put(key, v);
+                ss << "1" << code;
+                handler->Put(key, ss.str());
                 pos = pos + len;//更新pos
-
+                ss.str();
             }
         } else {
             return Status::Corruption("bad WriteBatch Put");

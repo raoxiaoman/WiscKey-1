@@ -136,7 +136,7 @@ Status WriteBatch::Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb) 
       case kTypeValue:
         if (GetLengthPrefixedSlice(&input, &key) &&
             GetLengthPrefixedSlice(&input, &value)) {
-            if(value.size() < 128){
+            if(value.size() < 512){
                 const char* now_pos = input.data();//如果是插入，解析出k和v
                 size_t len = now_pos - last_pos;//计算出这条记录的大小
                 last_pos = now_pos;

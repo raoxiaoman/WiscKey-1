@@ -1407,7 +1407,7 @@ Status DBImpl::Delete(const WriteOptions& options, const Slice& key) {
 int DBImpl::getDataBaseSize(){
     int allfilesize = 0;
     for (int level = 0; level < config::kNumLevels; level++) {
-        allfilesize += versions_->NumLevelBytes(level) / 1048576.0;
+        allfilesize += versions_->NumLevelFiles(level);
     }
     return allfilesize;
 }

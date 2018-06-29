@@ -144,7 +144,7 @@ Status WriteBatch::Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb) 
                 v += "0";
                 v += value.ToString();
                 handler->Put(key, v);
-                pos = pos + len;//更新pos
+                //pos = pos + len;//更新pos
             }else{
                 const char* now_pos = input.data();//如果是插入，解析出k和v
                 size_t len = now_pos - last_pos;//计算出这条记录的大小
@@ -268,4 +268,4 @@ Status WriteBatchInternal::ParseRecord(const WriteBatch* batch, uint64_t& pos, S
         pos = kHeader;
     return batch->ParseRecord(pos, key, value, isDel);
 }
-}  // namespace leveldb
+

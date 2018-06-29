@@ -137,9 +137,9 @@ Status WriteBatch::Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb) 
         if (GetLengthPrefixedSlice(&input, &key) &&
             GetLengthPrefixedSlice(&input, &value)) {
             if(value.size() < 512){
-                const char* now_pos = input.data();//如果是插入，解析出k和v
-                size_t len = now_pos - last_pos;//计算出这条记录的大小
-                last_pos = now_pos;
+                //const char* now_pos = input.data();//如果是插入，解析出k和v
+                //size_t len = now_pos - last_pos;//计算出这条记录的大小
+                //last_pos = now_pos;
                 std::string v = "";
                 v += "0";
                 v += value.ToString();
@@ -268,4 +268,4 @@ Status WriteBatchInternal::ParseRecord(const WriteBatch* batch, uint64_t& pos, S
         pos = kHeader;
     return batch->ParseRecord(pos, key, value, isDel);
 }
-
+}  // namespace leveldb

@@ -180,6 +180,7 @@ class DBImpl : public DB {
   VlogManager vlog_manager_;
   uint32_t seed_;                // For sampling.
 
+  int getDataBaseSize();
   // Queue of writers.
   std::deque<Writer*> writers_;
   WriteBatch* tmp_batch_;

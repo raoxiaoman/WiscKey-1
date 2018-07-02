@@ -23,6 +23,7 @@
 
 #include <string>
 #include "leveldb/status.h"
+#include "../db/version_set.h"
 
 namespace leveldb {
 
@@ -57,7 +58,7 @@ class WriteBatch {
   };
   Status Iterate(Handler* handler) const;
   //Status Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb) const;
-  Status Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb,int allfilesize) const;
+  Status Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb,leveldb::VersionSet *versions_) const;
   Status ParseRecord(uint64_t& pos, Slice& key, Slice& value, bool& isDel) const;
  private:
   friend class WriteBatchInternal;

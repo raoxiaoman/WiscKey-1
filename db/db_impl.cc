@@ -495,8 +495,7 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
       mem->Ref();
     }
     vlog_head_+= head_size;
-    int allfilesize = getDataBaseSize();
-    status = WriteBatchInternal::InsertInto(&batch, mem, vlog_head_, log_number,allfilesize);
+    status = WriteBatchInternal::InsertInto(&batch, mem, vlog_head_, log_number,versions_);
     MaybeIgnoreError(&status);
     if (!status.ok()) {
       break;
@@ -1404,14 +1403,6 @@ Status DBImpl::Delete(const WriteOptions& options, const Slice& key) {
     return DB::Delete(options, key);
 }
 
-int DBImpl::getDataBaseSize(){
-    int allfilesize = 0;
-    for (int level = 0; level < config::kNumLevels; level++) {
-        allfilesize += versions_->NumLevelFiles(level);
-    }
-    return allfilesize;
-}
-
 Status DBImpl::Write(const WriteOptions& options, WriteBatch* my_batch) {
     Writer w(&mutex_);
     w.batch = my_batch;
@@ -1453,9 +1444,8 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* my_batch) {
             }
             vlog_head_ += head_size;
             if (status.ok()) {
-                int allfilesize = getDataBaseSize();
                 //status = WriteBatchInternal::InsertInto(updates, mem_, vlog_head_, logfile_number_);//vlog_head_代表每条kv对在vlog中的位置
-                status = WriteBatchInternal::InsertInto(updates, mem_, vlog_head_, logfile_number_,allfilesize);//vlog_head_代表每条kv对在vlog中的位置
+                status = WriteBatchInternal::InsertInto(updates, mem_, vlog_head_, logfile_number_,versions_);//vlog_head_代表每条kv对在vlog中的位置
             }
             mutex_.Lock();
             if (sync_error) {

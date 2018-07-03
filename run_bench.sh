@@ -1,17 +1,23 @@
 #!/bin/bash
 KB=1024
+MB=$((1024 * KB))
+GB=$((1024 * MB))
+#NUM=100000
 NUM=1000000
-#NUM=10000
 #NUM=10000000
 LBENCH_BIN=./out-static/db_bench
 #BENCHMARKS="fillseq,fillrandom,overwrite,readrandom,readseq,seekrandom,compact,readrandom,readseq"
 #BENCHMARKS="fillseq,seekrandom,compact,seekrandom"
 BENCHMARKS="fillseq,fillrandom,overwrite,readrandom,readseq,seekrandom,compact,readrandom,readseq,seekrandom"
-#BENCHMARKS="fillseq,readrandom"
+BENCHMARKS="fillseq,fillrandom,readrandom,readseq"
 USE_EXISTING_DB=0
 #VALUE_SIZE=4096
-DB=../wiskkey_db_test
-
+#DB=../wiskkey_db_test
+DB=../ssd_test/hybirdTest
+#WRITE_BUFFER_SIZE=$((8*MB))
+#BLOCK_SIZE=$((8*KB))
+#CACHE_SIZE=$((16*MB))
+HISTOGRAM=1
 
 if [ -n "$BENCHMARKS" ]; then
     ARGS="$ARGS --benchmarks=$BENCHMARKS"
@@ -46,12 +52,15 @@ fi
 if [ -n "$OPEN_FILES" ]; then
     ARGS="$ARGS -open_files=$OPEN_FILES"
 fi
+if [ -n "$HISTOGRAM" ]; then
+    ARGS="$ARGS --histogram=$HISTOGRAM"
+fi
 if [ -n "$DB" ]; then
     ARGS="$ARGS --db=$DB"
 fi
 
 LBENCH_CMD="$LBENCH_BIN $ARGS"
 
-rm -rf ../wiskkey_db_test/*
+rm -rf $DB/*
 echo "$LBENCH_CMD"
 eval "$LBENCH_CMD"

@@ -116,7 +116,7 @@ Status WriteBatch::Iterate(Handler* handler) const {
   }
 }
 
-Status WriteBatch::Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb,leveldb::VersionSet* versions_) const {
+Status WriteBatch::Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb,int allfilesize) const {
     //pos是当前vlog文件的大小
   Slice input(rep_);
   if (input.size() < kHeader) {
@@ -137,7 +137,7 @@ Status WriteBatch::Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb,l
       case kTypeValue:
         if (GetLengthPrefixedSlice(&input, &key) &&
             GetLengthPrefixedSlice(&input, &value)) {
-            if(value.size()<1024){
+            if(value.size() < 1024){
                 //const char* now_pos = input.data();//如果是插入，解析出k和v
                 //size_t len = now_pos - last_pos;//计算出这条记录的大小
                 //last_pos = now_pos;
@@ -147,11 +147,7 @@ Status WriteBatch::Iterate(Handler* handler, uint64_t& pos, uint64_t file_numb,l
                 handler->Put(key, v);
                 //pos = pos + len;//更新pos
             }else{
-                int allfilesize = 0;
-                for (int level = 0; level < config::kNumLevels; level++) {
-                    allfilesize += versions_->NumLevelFiles(level);
-                }
-                if(allfilesize < 100){
+                if(allfilesize < 400){
                     std::string v = "";
                     v += "0";
                     v += value.ToString();
@@ -256,11 +252,11 @@ Status WriteBatchInternal::InsertInto(const WriteBatch* b,
     return b->Iterate(&inserter);
 }
 Status WriteBatchInternal::InsertInto(const WriteBatch* b,
-        MemTable* memtable, uint64_t& pos, uint64_t file_numb, leveldb::VersionSet* versions_) {
+        MemTable* memtable, uint64_t& pos, uint64_t file_numb,int allfilesize) {
     MemTableInserter inserter;
     inserter.sequence_ = WriteBatchInternal::Sequence(b);
     inserter.mem_ = memtable;
-    return b->Iterate(&inserter, pos, file_numb, versions_);
+    return b->Iterate(&inserter, pos, file_numb, allfilesize);
     //return b->Iterate(&inserter, pos, file_numb, );
 }
 
